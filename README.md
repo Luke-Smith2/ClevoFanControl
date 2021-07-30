@@ -1,3 +1,27 @@
+#Luke-Smith2s update:
+This currently ONLY supports Zen-2 based processors and will not operate on anything else currently - further functionality has been commented off and is in working progress.
+Changelog from the prior version:
+Uses OpenHardwareMonitor for CPU temperature instead of Windows WMIC.
+Ramping speeds have been fixed, the fan speed changes slowly - further updates due.
+Needs to be run as Admin for CPU temperature detection to work - this has been solved by requesting administrator permissions to open the application saving the user time/using windows properties to fix the issues.
+Labels have been changed to add the 'C' for Celsius.
+Credit goes to @djsubtronic for providing the original base to improve upon, improvements will be made further in due time.
+
+
+
+
+
+
+
+
+
+
+
+
+
+Original project:
+
+
 # ClevoFanControl
 
 A custom fan control control app for Clevo laptops. The fan icon is borrowed from the Obsidian Fan Control app.
