@@ -7,11 +7,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using OpenHardwareMonitor.Hardware;
-using System.Text;
 
 
-namespace ClevoFanControl {
-    public partial class frmMain : Form {
+namespace ClevoFanControl
+{
+    public partial class frmMain : Form
+    {
 
         private const int SLEEP_TIME_BETWEEN_MEASUREMENTS = 2000;
         int timerTickCount = 0;
@@ -37,8 +38,14 @@ namespace ClevoFanControl {
         int currentCpuFan;
         int currentGpuFan;
 
+        int maxCpuTemp = 0;
+        int maxGpuTemp = 0;
+
         int cpuSameTempTicks = 0;
         int gpuSameTempTicks = 0;
+
+        int cpuSafetyTemp = 90;
+        int gpuSafetyTemp = 85;
 
         FanTable defaultCpuFanTable;
         FanTable defaultGpuFanTable;
@@ -50,19 +57,23 @@ namespace ClevoFanControl {
 
         FanTable cpuFanTable;
         FanTable gpuFanTable;
-        private string cpuSensor1;
 
-        public frmMain() {
+        bool highCpuDelayFinished = false;
+
+        public frmMain()
+        {
             InitializeComponent();
         }
 
-        private void Form1_Load(object sender, EventArgs e) {
+        private void Form1_Load(object sender, EventArgs e)
+        {
 
             fan = new ClevoEcInfo();
 
             AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(UnhandledExceptionHandler);
 
-            computer = new Computer() {
+            computer = new Computer()
+            {
                 CPUEnabled = true,
                 GPUEnabled = true
             };
@@ -116,35 +127,87 @@ namespace ClevoFanControl {
 
         }
 
-        private void UnhandledExceptionHandler(object sender, UnhandledExceptionEventArgs args) {
+        private void UnhandledExceptionHandler(object sender, UnhandledExceptionEventArgs args)
+        {
             SetFansToMaximum();
             MessageBox.Show("An unexpected error has occurred, fans have been set to 100% for safety.", "Clevo Fan Control Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
-        private void tmrMain_Tick(object sender, EventArgs e) {
+        private void tmrMain_Tick(object sender, EventArgs e)
+        {
 
             // Get CPU temperature and set fan speed
             currentCpuTemp = GetCurrentTemperature("CPU");
             currentGpuTemp = GetCurrentTemperature("GPU");
 
-            currentCpuFan = CalcFanPercentage("CPU", currentCpuTemp);
-            currentGpuFan = CalcFanPercentage("GPU", currentGpuTemp);
+            if (currentCpuTemp > maxCpuTemp)
+            {
+                maxCpuTemp = currentCpuTemp;
+            }
+            if (currentGpuTemp > maxGpuTemp)
+            {
+                maxGpuTemp = currentGpuTemp;
+            }
 
-            if (currentCpuTemp > 85 && currentGpuTemp >= 85) {
+            //if (currentCpuTemp >= 80) {
+            //    tmrHighCpuDelay.Enabled = true;
+            //}
+
+            if (currentCpuTemp >= cpuSafetyTemp || currentGpuTemp >= gpuSafetyTemp)
+            {
                 currentCpuFan = 100;
                 currentGpuFan = 100;
             }
-
-            if (currentCpuFan != prevFanCPUPercentage || timerTickCount * tmrMain.Interval * 0.001 >= 60) {
-                fan?.SetFanSpeed(1, currentCpuFan);
-                RampFanSpeed(1, currentCpuFan);
-                prevFanCPUPercentage = currentCpuFan;
-                cpuSameTempTicks = 0;
+            else
+            {
+                currentCpuFan = CalcFanPercentage("CPU", currentCpuTemp);
+                currentGpuFan = CalcFanPercentage("GPU", currentGpuTemp);
             }
 
-            if (currentGpuFan != prevFanGPUPercentage || timerTickCount * tmrMain.Interval * 0.001 >= 60) {
+            if (btnACFans.Checked && SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Online)
+            {
+                if (currentCpuFan < 30)
+                {
+                    currentCpuFan = 30;
+                }
+                if (currentGpuFan < 30)
+                {
+                    currentGpuFan = 30;
+                }
+            }
+
+            //if (currentCpuTemp >= 80 && currentGpuTemp >= 80) {
+            //    currentCpuFan = 100;
+            //    currentGpuFan = 100;
+            //}
+
+            //if (currentGpuTemp >= 80) {
+            //    currentCpuFan = currentGpuFan;
+            //}
+
+            if (currentCpuFan != prevFanCPUPercentage || timerTickCount * tmrMain.Interval * 0.001 >= 60)
+            {
+                //if (prevCpuTemp < 80 && currentCpuTemp >= 80) {
+                //    if (highCpuDelayFinished) {
+                fan?.SetFanSpeed(1, currentCpuFan);
+                //RampFanSpeed(1, currentCpuFan);
+                prevFanCPUPercentage = currentCpuFan;
+                cpuSameTempTicks = 0;
+                //highCpuDelayFinished = false;
+                //tmrHighCpuDelay.Enabled = false;
+                //}
+                //} else {
+                //    fan?.SetFanSpeed(1, currentCpuFan);
+                //    //RampFanSpeed(1, currentCpuFan);
+                //    prevFanCPUPercentage = currentCpuFan;
+                //    cpuSameTempTicks = 0;
+                //}
+            }
+
+            if (currentGpuFan != prevFanGPUPercentage || timerTickCount * tmrMain.Interval * 0.001 >= 60)
+            {
                 fan?.SetFanSpeed(2, currentGpuFan);
-                RampFanSpeed(2, currentCpuFan);
+                //RampFanSpeed(2, currentCpuFan);
                 prevFanGPUPercentage = currentGpuFan;
                 gpuSameTempTicks = 0;
             }
@@ -152,8 +215,9 @@ namespace ClevoFanControl {
             UpdateGui();
 
             timerTickCount++;
-            if (timerTickCount * tmrMain.Interval * 0.001 > 60) {
-                GC.Collect();
+            if (timerTickCount * tmrMain.Interval * 0.001 > 60)
+            {
+                //GC.Collect();
                 timerTickCount = 0;
             }
 
@@ -161,75 +225,137 @@ namespace ClevoFanControl {
             prevGpuTemp = currentGpuTemp;
 
         }
-        private int CalcFanPercentage(string device, int currentTemp) {
+
+        private int CalcFanPercentage(string device, int currentTemp)
+        {
 
             int newFanPerc;
-            if (device == "CPU") {
 
-                if (currentTemp >= 85) {
+            if (device == "CPU")
+            {
+
+                if (currentTemp >= 90)
+                {
                     newFanPerc = cpuFanTable.Fan85;
-                } else if (currentTemp >= 80) {
+                }
+                else if (currentTemp >= 80)
+                {
                     newFanPerc = cpuFanTable.Fan80;
-                } else if (currentTemp >= 75) {
+                }
+                else if (currentTemp >= 75)
+                {
                     newFanPerc = cpuFanTable.Fan75;
-                } else if (currentTemp >= 70) {
+                }
+                else if (currentTemp >= 70)
+                {
                     newFanPerc = cpuFanTable.Fan70;
-                } else if (currentTemp >= 65) {
+                }
+                else if (currentTemp >= 65)
+                {
                     newFanPerc = cpuFanTable.Fan65;
-                } else if (currentTemp >= 60) {
+                }
+                else if (currentTemp >= 60)
+                {
                     newFanPerc = cpuFanTable.Fan60;
-                } else if (currentTemp >= 55) {
+                }
+                else if (currentTemp >= 55)
+                {
                     newFanPerc = cpuFanTable.Fan55;
-                } else if (currentTemp >= 50) {
+                }
+                else if (currentTemp >= 50)
+                {
                     newFanPerc = cpuFanTable.Fan50;
-                } else if (currentTemp >= 45) {
+                }
+                else if (currentTemp >= 45)
+                {
                     newFanPerc = cpuFanTable.Fan45;
-                } else if (currentTemp >= 40) {
+                }
+                else if (currentTemp >= 40)
+                {
                     newFanPerc = cpuFanTable.Fan40;
-                } else {
-                    if (btnProfileManual.Checked) {
+                }
+                else
+                {
+                    if (btnProfileManual.Checked)
+                    {
                         newFanPerc = 0;
-                    } else if (btnProfileDefault.Checked) {
+                    }
+                    else if (btnProfileDefault.Checked)
+                    {
                         newFanPerc = 40;
-                    } else if (btnProfileMax.Checked) {
+                    }
+                    else if (btnProfileMax.Checked)
+                    {
                         newFanPerc = 100;
-                    } else {
+                    }
+                    else
+                    {
                         newFanPerc = 100;
                     }
                 }
 
                 return newFanPerc;
 
-            } else if (device == "GPU") {
+            }
+            else if (device == "GPU")
+            {
 
-                if (currentTemp >= 85) {
+                if (currentTemp >= 85)
+                {
                     newFanPerc = gpuFanTable.Fan85;
-                } else if (currentTemp >= 80) {
+                }
+                else if (currentTemp >= 80)
+                {
                     newFanPerc = gpuFanTable.Fan80;
-                } else if (currentTemp >= 75) {
+                }
+                else if (currentTemp >= 75)
+                {
                     newFanPerc = gpuFanTable.Fan75;
-                } else if (currentTemp >= 70) {
+                }
+                else if (currentTemp >= 70)
+                {
                     newFanPerc = gpuFanTable.Fan70;
-                } else if (currentTemp >= 65) {
+                }
+                else if (currentTemp >= 65)
+                {
                     newFanPerc = gpuFanTable.Fan65;
-                } else if (currentTemp >= 60) {
+                }
+                else if (currentTemp >= 60)
+                {
                     newFanPerc = gpuFanTable.Fan60;
-                } else if (currentTemp >= 55) {
+                }
+                else if (currentTemp >= 55)
+                {
                     newFanPerc = gpuFanTable.Fan55;
-                } else if (currentTemp >= 50) {
+                }
+                else if (currentTemp >= 50)
+                {
                     newFanPerc = gpuFanTable.Fan50;
-                } else if (currentTemp >= 45) {
+                }
+                else if (currentTemp >= 45)
+                {
                     newFanPerc = gpuFanTable.Fan45;
-                } else if (currentTemp >= 40) {
+                }
+                else if (currentTemp >= 40)
+                {
                     newFanPerc = gpuFanTable.Fan40;
-                } else {
-                    if (btnProfileManual.Checked) {
+                }
+                else
+                {
+                    if (btnProfileManual.Checked)
+                    {
                         newFanPerc = 0;
-                    } else if (btnProfileDefault.Checked) {
+                    }
+                    else if (btnProfileDefault.Checked)
+                    {
                         newFanPerc = 40;
-                    } else if (btnProfileMax.Checked) {
+                    }
+                    else if (btnProfileMax.Checked)
+                    {
                         newFanPerc = 100;
-                    } else {
+                    }
+                    else
+                    {
                         newFanPerc = 100;
                     }
                 }
@@ -241,143 +367,79 @@ namespace ClevoFanControl {
             return 100;
         }
 
-        //private string get_cpu_version(string device)
-        //{
-            
-        //}
-        
+        private int GetCurrentTemperature(string device)
+        {
 
+            if (device == "CPU")
+            {
 
-
-        private int GetCurrentTemperature(string device) {
-            if (device == "CPU") {
                 try
                 {
-                    //var mbs = new ManagementObjectSearcher("Select Family From Win32_processor");
-                    //ManagementObjectCollection mbsList = mbs.Get();
-                    //string CPUID = "";
-                    //foreach (ManagementObject mo in mbsList)
-                    //{
-                       // CPUID = mo["Family"].ToString();
-                        //Console.WriteLine(CPUID);
-                       // break;
-                   // }
-                   // string CPURyzen = ("107");
-                    //string CPURocketLake = ("1");
-                   // var CPUIsRyzen = false;
-                   // var CPUIsRocketLake = false;
-                   // if (CPUID == CPURyzen)
-                   // {
-                        //Console.WriteLine(CPURyzen + "This works");
-                        //CPUIsRyzen = true;
-                        //return CPUIsRyzen;
-                    //}
-                    //else if (CPUID == CPUIsRocketLake)
-                    //{
-                        //CPUIsRocketLake = true;
-                        //return CPUIsRocketLake;
-                    //}
-
-                    //else if (CPUIsRyzen = true)
-                    //{
-
-                    //}
-                    //else if (CPUIsRocketLake = true)
-                        //{
-
-                        //}
-
-
-                    //ManagementClass managClass = new ManagementClass("Select Family From win32_processor");
-                    //ManagementObjectCollection managCollec = managClass.GetInstances();
-                    //foreach (ManagementObject managObj in managCollec)
-                    //{
-                        //string cpuArch = managObj.Properties["Family"].Value.ToString();
-                        //int cpuArch1 = Convert.ToInt32(cpuArch);
-                        //int v3 = Int32.Parse("107");
-                        //if (cpuArch1 == v3)
-                        //{
-                            //int CPUID = Int32.Parse("1");
-                        //}
-                        //break;
-                    //}
-                    //cpuSensor = wmiSearcher.Get().OfType<ManagementObject>().FirstOrDefault();
-                    //int currTemp = (Convert.ToInt32(cpuSensor["CurrentTemperature"]) - 2732) / 10;
+                    cpuSensor = wmiSearcher.Get().OfType<ManagementObject>().FirstOrDefault();
+                    int currTemp = (Convert.ToInt32(cpuSensor["CurrentTemperature"]) - 2732) / 10;
                     //GC.Collect();
-                    //return currTemp;
-                    //ManagementObjectSearcher searcher = new ManagementObjectSearcher("root\\CIMV2", "SELECT * FROM Win32_Processor");
-                    //foreach (ManagementObject queryObj in searcher.Get()) { }
-                    //string v = Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE", EnvironmentVariableTarget.Machine);
-                    //string v = Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE", EnvironmentVariableTarget.Machine);
-                    //string x = Get - WmiObject Win32_Processor;
-                    //Console.WriteLine(x);
-                    //int Ryzen = Convert.ToInt32(cpuArch);
-                    //Console.WriteLine(cpuArch1);
-                    //Console.WriteLine(v3);
-                    //int Ryzen = 1;
-                    //Console.WriteLine("Hello!");
-                    //return Convert.ToInt32(Ryzen);  //Console.WriteLine("Test");
-                    //}
-                    //string v1 = managObj.Properties["processorID"].Value.ToString();
-                    //Console.WriteLine(v1);
-                    //Console.WriteLine("donke.");
-                    IHardware hardware = computer.Hardware[0]; //hardware 0 value = CPU
+                    return currTemp;
+                }
+                catch
+                {
+                    wmiSearcher = new ManagementObjectSearcher("root\\WMI", "SELECT * FROM MSAcpi_ThermalZoneTemperature");
+                    return prevCpuTemp;
+                }
+
+            }
+            else if (device == "GPU")
+            {
+
+                try
+                {
+                    IHardware hardware = computer.Hardware[1];
                     hardware.Update();
-                    for (int i = 0; i < hardware.Sensors.Length; i++)
+                    foreach (ISensor sensor in hardware.Sensors)
                     {
-                        ISensor sensor = hardware.Sensors[i];
-                        hardware.Update();
-                        //Console.WriteLine(sensor.Name); used for debugging purposes (lists sensors)
-                        if (sensor.SensorType == SensorType.Temperature && sensor.Name == "CPU Package") //CPU package temperature, via OpenHardwareMonitor as opposed to WMIC
+                        if (sensor.SensorType == SensorType.Temperature && sensor.Name == "GPU Core")
                         {
-                            return Convert.ToInt32(sensor.Value); //returns the value
+                            return Convert.ToInt32(sensor.Value);
                         }
                     }
                 }
                 catch (Exception e) { }
-                {
-                return prevCpuTemp;
-            }
-        } else if (device == "GPU") {
-
-                try {
-                    IHardware hardware = computer.Hardware[1];
-                    hardware.Update();
-                    foreach (ISensor sensor in hardware.Sensors) {
-                        if (sensor.SensorType == SensorType.Temperature && sensor.Name == "GPU Core") {
-                            return Convert.ToInt32(sensor.Value);
-                        }
-                    }
-                } catch (Exception e) { }
 
             }
+
             return 0;
         }
-    
-        private void SetFansToMaximum() {
+
+        private void SetFansToMaximum()
+        {
             fan?.SetFanSpeed(1, 100);
             fan?.SetFanSpeed(2, 100);
             //RampFanSpeed(1, 100);
             //RampFanSpeed(2, 100);
         }
 
-        private void RampFanSpeed(int FanNumber, int FanSpeed) {
-            if (FanNumber == 1) {
+        private void RampFanSpeed(int FanNumber, int FanSpeed)
+        {
+            if (FanNumber == 1)
+            {
                 int rampPercentage = (FanSpeed - prevFanCPUPercentage) / cpuFanRampIntervals;
                 /*for(1, cpuFanRampIntervals, i => {
                     fan?.SetFanSpeed(1, prevFanCPUPercentage + (i * rampPercentage));
                     Thread.Sleep(100);
                 };);*/
-                for (int i = 1; i <= cpuFanRampIntervals; i++) {
+                for (int i = 1; i <= cpuFanRampIntervals; i++)
+                {
                     fan?.SetFanSpeed(1, prevFanCPUPercentage + (i * rampPercentage));
-                    
+
                     Thread.Sleep(100);
                 }
-            } else if (FanNumber == 2) {
+            }
+            else if (FanNumber == 2)
+            {
                 int rampPercentage = (FanSpeed - prevFanGPUPercentage) / gpuFanRampIntervals;
                 // this should use normal for loop syntax
                 // for (int i = 1; i <= gpuFanRampIntervals; i++) {
-                for (int i = 1; i <= gpuFanRampIntervals; i++) {
+                for (int i = 1; i <= gpuFanRampIntervals; i++)
+                {
                     fan?.SetFanSpeed(2, prevFanGPUPercentage + (i * rampPercentage));
                     Thread.Sleep(100);
                 }
@@ -392,54 +454,68 @@ namespace ClevoFanControl {
             fan?.SetFanSpeed(FanNumber, FanSpeed);
         }
 
-        private void UpdateGui() {
+        private void UpdateGui()
+        {
 
-            if (WindowState != FormWindowState.Minimized) {
+            if (WindowState != FormWindowState.Minimized)
+            {
 
-                //lblCPUTemp.Text = currentCpuTemp + "°C";
-                if (currentCpuTemp > 0) {
-                    lblCPUTemp.Text = currentCpuTemp.ToString() + "°C";
-                    lblCPUTemp.Font = new Font("Open Sans", 24);
-                }
-                else
-                {
-                    lblCPUTemp.Text = "Asleep";
-                    lblCPUTemp.Font = new Font("Open Sans", 24);
-                }
+                lblCPUTemp.Text = currentCpuTemp + "°";
                 lblCPUFan.Text = currentCpuFan + "%";
                 prgCPUFan.Width = Convert.ToInt32((Convert.ToDecimal(currentCpuFan) / 100) * (prgCPUFanContainer.Width - 4));
 
-                if (currentGpuTemp > 0) {
-                    lblGPUTemp.Text = currentGpuTemp.ToString() + "°C";
+                lblCPUMaxTemp.Text = "Max: " + maxCpuTemp.ToString() + "°";
+
+                if (currentGpuTemp > 0)
+                {
+                    lblGPUTemp.Text = currentGpuTemp.ToString() + "°";
                     lblGPUTemp.Font = new Font("Open Sans", 24);
                     lblGPUHeader.ForeColor = Color.Black;
                     lblGPUTemp.ForeColor = Color.Black;
                     lblGPUFanHeader.ForeColor = Color.Black;
                     lblGPUFan.ForeColor = Color.Black;
-                } else {
+                    lblGPUMaxTemp.ForeColor = Color.Black;
+                }
+                else
+                {
                     lblGPUTemp.Text = "Asleep";
                     lblGPUTemp.Font = new Font("Open Sans", 24);
                     lblGPUHeader.ForeColor = Color.DimGray;
                     lblGPUTemp.ForeColor = Color.DimGray;
                     lblGPUFanHeader.ForeColor = Color.DimGray;
                     lblGPUFan.ForeColor = Color.DimGray;
+                    lblGPUMaxTemp.ForeColor = Color.DimGray;
                 }
                 lblGPUFan.Text = currentGpuFan + "%";
                 prgGPUFan.Width = Convert.ToInt32((Convert.ToDecimal(currentGpuFan) / 100) * (prgGPUFanContainer.Width - 4));
+
+                lblGPUMaxTemp.Text = "Max: " + maxGpuTemp.ToString() + "°";
+
+                if (currentCpuTemp >= cpuSafetyTemp)
+                {
+                    lblCpuSafetyTemp.ForeColor = Color.Red;
+                }
+                else
+                {
+                    lblCpuSafetyTemp.ForeColor = Color.Black;
+                }
+
+                if (currentGpuTemp >= gpuSafetyTemp)
+                {
+                    lblGpuSafetyTemp.ForeColor = Color.Red;
+                }
+                else
+                {
+                    lblGpuSafetyTemp.ForeColor = Color.Black;
+                }
+
 
             }
 
             string tooltip =
                 "CPU\n"
-                + (currentCpuTemp > 0
-                    ?
-                        "  Temp: " + currentCpuTemp + "°\n"
-                        + "  Fan: " + currentCpuFan + "%"
-                    :
-                        "  Asleep"
-                )
-                //+ "  Temp: " + currentCpuTemp + "°\n"
-                //+ "  Fan: " + currentCpuFan + "%\n\n"
+                + "  Temp: " + currentCpuTemp + "°\n"
+                + "  Fan: " + currentCpuFan + "%\n\n"
                 + "GPU\n"
                 + (currentGpuTemp > 0
                     ?
@@ -452,61 +528,65 @@ namespace ClevoFanControl {
 
         }
 
-        private void SetSliderValuesFromTable() {
+        private void SetSliderValuesFromTable()
+        {
 
-            barCPU40.Value = cpuFanTable.Fan40;
-            barCPU45.Value = cpuFanTable.Fan45;
-            barCPU50.Value = cpuFanTable.Fan50;
-            barCPU55.Value = cpuFanTable.Fan55;
-            barCPU60.Value = cpuFanTable.Fan60;
-            barCPU65.Value = cpuFanTable.Fan65;
-            barCPU70.Value = cpuFanTable.Fan70;
-            barCPU75.Value = cpuFanTable.Fan75;
-            barCPU80.Value = cpuFanTable.Fan80;
-            barCPU85.Value = cpuFanTable.Fan85;
-            lblCPUFan40.Text = cpuFanTable.Fan40 + "%";
-            lblCPUFan45.Text = cpuFanTable.Fan45 + "%";
-            lblCPUFan50.Text = cpuFanTable.Fan50 + "%";
-            lblCPUFan55.Text = cpuFanTable.Fan55 + "%";
-            lblCPUFan60.Text = cpuFanTable.Fan60 + "%";
-            lblCPUFan65.Text = cpuFanTable.Fan65 + "%";
-            lblCPUFan70.Text = cpuFanTable.Fan70 + "%";
-            lblCPUFan75.Text = cpuFanTable.Fan75 + "%";
-            lblCPUFan80.Text = cpuFanTable.Fan80 + "%";
-            lblCPUFan85.Text = cpuFanTable.Fan85 + "%";
+            barCPU40.Value = userCpuFanTable.Fan40;
+            barCPU45.Value = userCpuFanTable.Fan45;
+            barCPU50.Value = userCpuFanTable.Fan50;
+            barCPU55.Value = userCpuFanTable.Fan55;
+            barCPU60.Value = userCpuFanTable.Fan60;
+            barCPU65.Value = userCpuFanTable.Fan65;
+            barCPU70.Value = userCpuFanTable.Fan70;
+            barCPU75.Value = userCpuFanTable.Fan75;
+            barCPU80.Value = userCpuFanTable.Fan80;
+            barCPU85.Value = userCpuFanTable.Fan85;
+            lblCPUFan40.Text = userCpuFanTable.Fan40 + "%";
+            lblCPUFan45.Text = userCpuFanTable.Fan45 + "%";
+            lblCPUFan50.Text = userCpuFanTable.Fan50 + "%";
+            lblCPUFan55.Text = userCpuFanTable.Fan55 + "%";
+            lblCPUFan60.Text = userCpuFanTable.Fan60 + "%";
+            lblCPUFan65.Text = userCpuFanTable.Fan65 + "%";
+            lblCPUFan70.Text = userCpuFanTable.Fan70 + "%";
+            lblCPUFan75.Text = userCpuFanTable.Fan75 + "%";
+            lblCPUFan80.Text = userCpuFanTable.Fan80 + "%";
+            lblCPUFan85.Text = userCpuFanTable.Fan85 + "%";
 
-            barGPU40.Value = gpuFanTable.Fan40;
-            barGPU45.Value = gpuFanTable.Fan45;
-            barGPU50.Value = gpuFanTable.Fan50;
-            barGPU55.Value = gpuFanTable.Fan55;
-            barGPU60.Value = gpuFanTable.Fan60;
-            barGPU65.Value = gpuFanTable.Fan65;
-            barGPU70.Value = gpuFanTable.Fan70;
-            barGPU75.Value = gpuFanTable.Fan75;
-            barGPU80.Value = gpuFanTable.Fan80;
-            barGPU85.Value = gpuFanTable.Fan85;
-            lblGPUFan40.Text = gpuFanTable.Fan40 + "%";
-            lblGPUFan45.Text = gpuFanTable.Fan45 + "%";
-            lblGPUFan50.Text = gpuFanTable.Fan50 + "%";
-            lblGPUFan55.Text = gpuFanTable.Fan55 + "%";
-            lblGPUFan60.Text = gpuFanTable.Fan60 + "%";
-            lblGPUFan65.Text = gpuFanTable.Fan65 + "%";
-            lblGPUFan70.Text = gpuFanTable.Fan70 + "%";
-            lblGPUFan75.Text = gpuFanTable.Fan75 + "%";
-            lblGPUFan80.Text = gpuFanTable.Fan80 + "%";
-            lblGPUFan85.Text = gpuFanTable.Fan85 + "%";
+            barGPU40.Value = userGpuFanTable.Fan40;
+            barGPU45.Value = userGpuFanTable.Fan45;
+            barGPU50.Value = userGpuFanTable.Fan50;
+            barGPU55.Value = userGpuFanTable.Fan55;
+            barGPU60.Value = userGpuFanTable.Fan60;
+            barGPU65.Value = userGpuFanTable.Fan65;
+            barGPU70.Value = userGpuFanTable.Fan70;
+            barGPU75.Value = userGpuFanTable.Fan75;
+            barGPU80.Value = userGpuFanTable.Fan80;
+            barGPU85.Value = userGpuFanTable.Fan85;
+            lblGPUFan40.Text = userGpuFanTable.Fan40 + "%";
+            lblGPUFan45.Text = userGpuFanTable.Fan45 + "%";
+            lblGPUFan50.Text = userGpuFanTable.Fan50 + "%";
+            lblGPUFan55.Text = userGpuFanTable.Fan55 + "%";
+            lblGPUFan60.Text = userGpuFanTable.Fan60 + "%";
+            lblGPUFan65.Text = userGpuFanTable.Fan65 + "%";
+            lblGPUFan70.Text = userGpuFanTable.Fan70 + "%";
+            lblGPUFan75.Text = userGpuFanTable.Fan75 + "%";
+            lblGPUFan80.Text = userGpuFanTable.Fan80 + "%";
+            lblGPUFan85.Text = userGpuFanTable.Fan85 + "%";
 
         }
 
-        private void LoadFanTableAndConfig() {
+        private void LoadFanTableAndConfig()
+        {
 
             var fanCurveFile = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) + "\\userfancurve.cfg";
 
-            if (!File.Exists(fanCurveFile)) {
+            if (!File.Exists(fanCurveFile))
+            {
                 SaveFanTableAndConfig();
             }
 
-            using (var sw = new StreamReader(fanCurveFile)) {
+            using (var sw = new StreamReader(fanCurveFile))
+            {
 
                 userCpuFanTable.Fan40 = Convert.ToInt32(sw.ReadLine());
                 userCpuFanTable.Fan45 = Convert.ToInt32(sw.ReadLine());
@@ -536,46 +616,63 @@ namespace ClevoFanControl {
 
             var configFile = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) + "\\ClevoFanControl.cfg";
 
-            if (!File.Exists(configFile)) {
+            if (!File.Exists(configFile))
+            {
                 SaveFanTableAndConfig();
             }
 
             int wLeft = 0, wTop = 0;
 
-            using (var sw = new StreamReader(configFile)) {
+            try
+            {
+                using (var sw = new StreamReader(configFile))
+                {
 
-                var profile = sw.ReadLine();
-                if (profile == "1") {
-                    btnProfileManual.Checked = true;
-                    mnuProfileManual.Checked = true;
-                    mnuProfileDefault.Checked = false;
-                    mnuProfileMax.Checked = false;
-                } else if (profile == "2") {
-                    btnProfileDefault.Checked = true;
-                    mnuProfileManual.Checked = false;
-                    mnuProfileDefault.Checked = true;
-                    mnuProfileMax.Checked = false;
-                } else if (profile == "3") {
-                    btnProfileMax.Checked = true;
-                    mnuProfileManual.Checked = false;
-                    mnuProfileDefault.Checked = false;
-                    mnuProfileMax.Checked = true;
+                    var profile = sw.ReadLine();
+                    if (profile == "1")
+                    {
+                        btnProfileManual.Checked = true;
+                        mnuProfileManual.Checked = true;
+                        mnuProfileDefault.Checked = false;
+                        mnuProfileMax.Checked = false;
+                    }
+                    else if (profile == "2")
+                    {
+                        btnProfileDefault.Checked = true;
+                        mnuProfileManual.Checked = false;
+                        mnuProfileDefault.Checked = true;
+                        mnuProfileMax.Checked = false;
+                    }
+                    else if (profile == "3")
+                    {
+                        btnProfileMax.Checked = true;
+                        mnuProfileManual.Checked = false;
+                        mnuProfileDefault.Checked = false;
+                        mnuProfileMax.Checked = true;
+                    }
+
+                    wLeft = Convert.ToInt32(sw.ReadLine());
+                    wTop = Convert.ToInt32(sw.ReadLine());
+
+                    lastWLeft = wLeft;
+                    lastWTop = wTop;
+
+                    btnAlwaysOnTop.Checked = Convert.ToBoolean(sw.ReadLine());
+                    btnACFans.Checked = Convert.ToBoolean(sw.ReadLine());
+                    txtCpuSafetyTemp.Value = Convert.ToInt32(sw.ReadLine());
+                    cpuSafetyTemp = Convert.ToInt32(txtCpuSafetyTemp.Value);
+                    txtGpuSafetyTemp.Value = Convert.ToInt32(sw.ReadLine());
+                    gpuSafetyTemp = Convert.ToInt32(txtGpuSafetyTemp.Value);
+
                 }
-
-                wLeft = Convert.ToInt32(sw.ReadLine());
-                wTop = Convert.ToInt32(sw.ReadLine());
-
-                lastWLeft = wLeft;
-                lastWTop = wTop;
-
-                btnAlwaysOnTop.Checked = Convert.ToBoolean(sw.ReadLine());
-
             }
+            catch { }
 
             Left = wLeft;
             Top = wTop;
 
-            if (!IsOnScreen(this)) {
+            if (!IsOnScreen(this))
+            {
                 wLeft = (Screen.PrimaryScreen.Bounds.Width / 2) - (619 / 2);
                 wTop = (Screen.PrimaryScreen.Bounds.Height / 2) - (641 / 2);
                 lastWLeft = wLeft;
@@ -586,68 +683,80 @@ namespace ClevoFanControl {
 
         }
 
-        private void SaveFanTableAndConfig() {
+        private void SaveFanTableAndConfig()
+        {
 
             var path = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) + "\\";
 
-            if (btnProfileManual.Checked) {
+            using (var sw = new StreamWriter(path + "userfancurve.cfg"))
+            {
 
-                using (var sw = new StreamWriter(path + "userfancurve.cfg")) {
+                sw.WriteLine(userCpuFanTable.Fan40);
+                sw.WriteLine(userCpuFanTable.Fan45);
+                sw.WriteLine(userCpuFanTable.Fan50);
+                sw.WriteLine(userCpuFanTable.Fan55);
+                sw.WriteLine(userCpuFanTable.Fan60);
+                sw.WriteLine(userCpuFanTable.Fan65);
+                sw.WriteLine(userCpuFanTable.Fan70);
+                sw.WriteLine(userCpuFanTable.Fan75);
+                sw.WriteLine(userCpuFanTable.Fan80);
+                sw.WriteLine(userCpuFanTable.Fan85);
 
-                    sw.WriteLine(userCpuFanTable.Fan40);
-                    sw.WriteLine(userCpuFanTable.Fan45);
-                    sw.WriteLine(userCpuFanTable.Fan50);
-                    sw.WriteLine(userCpuFanTable.Fan55);
-                    sw.WriteLine(userCpuFanTable.Fan60);
-                    sw.WriteLine(userCpuFanTable.Fan65);
-                    sw.WriteLine(userCpuFanTable.Fan70);
-                    sw.WriteLine(userCpuFanTable.Fan75);
-                    sw.WriteLine(userCpuFanTable.Fan80);
-                    sw.WriteLine(userCpuFanTable.Fan85);
-
-                    sw.WriteLine(userGpuFanTable.Fan40);
-                    sw.WriteLine(userGpuFanTable.Fan45);
-                    sw.WriteLine(userGpuFanTable.Fan50);
-                    sw.WriteLine(userGpuFanTable.Fan55);
-                    sw.WriteLine(userGpuFanTable.Fan60);
-                    sw.WriteLine(userGpuFanTable.Fan65);
-                    sw.WriteLine(userGpuFanTable.Fan70);
-                    sw.WriteLine(userGpuFanTable.Fan75);
-                    sw.WriteLine(userGpuFanTable.Fan80);
-                    sw.WriteLine(userGpuFanTable.Fan85);
-
-                }
+                sw.WriteLine(userGpuFanTable.Fan40);
+                sw.WriteLine(userGpuFanTable.Fan45);
+                sw.WriteLine(userGpuFanTable.Fan50);
+                sw.WriteLine(userGpuFanTable.Fan55);
+                sw.WriteLine(userGpuFanTable.Fan60);
+                sw.WriteLine(userGpuFanTable.Fan65);
+                sw.WriteLine(userGpuFanTable.Fan70);
+                sw.WriteLine(userGpuFanTable.Fan75);
+                sw.WriteLine(userGpuFanTable.Fan80);
+                sw.WriteLine(userGpuFanTable.Fan85);
 
             }
 
-            using (var sw = new StreamWriter(path + "ClevoFanControl.cfg")) {
+            using (var sw = new StreamWriter(path + "ClevoFanControl.cfg"))
+            {
 
-                if (btnProfileManual.Checked) {
+                if (btnProfileManual.Checked)
+                {
                     sw.WriteLine("1");
-                } else if (btnProfileDefault.Checked) {
+                }
+                else if (btnProfileDefault.Checked)
+                {
                     sw.WriteLine("2");
-                } else if (btnProfileMax.Checked) {
+                }
+                else if (btnProfileMax.Checked)
+                {
                     sw.WriteLine("3");
                 }
 
-                if (Left > 10000 && Top > 10000) {
+                if (Left > 10000 && Top > 10000)
+                {
                     sw.WriteLine(Left);
                     sw.WriteLine(Top);
-                } else {
+                }
+                else
+                {
                     sw.WriteLine(lastWLeft);
                     sw.WriteLine(lastWTop);
                 }
 
                 sw.WriteLine(btnAlwaysOnTop.Checked);
+                sw.WriteLine(btnACFans.Checked);
+                sw.WriteLine(txtCpuSafetyTemp.Value.ToString());
+                sw.WriteLine(txtGpuSafetyTemp.Value.ToString());
             }
 
         }
-        private void ShowWindow() {
+        private void ShowWindow()
+        {
             Show();
             WindowState = FormWindowState.Normal;
             ShowInTaskbar = true;
         }
-        private void ExitApp() {
+        private void ExitApp()
+        {
             tmrMain.Enabled = false;
             computer.Close();
             SetFansToMaximum();
@@ -658,13 +767,16 @@ namespace ClevoFanControl {
             Environment.Exit(1);
         }
 
-        public bool IsOnScreen(Form form) {
+        public bool IsOnScreen(Form form)
+        {
             Screen[] screens = Screen.AllScreens;
-            foreach (Screen screen in screens) {
+            foreach (Screen screen in screens)
+            {
                 Rectangle formRectangle = new Rectangle(form.Left, form.Top,
                                                          form.Width, form.Height);
 
-                if (screen.WorkingArea.Contains(formRectangle)) {
+                if (screen.WorkingArea.Contains(formRectangle))
+                {
                     return true;
                 }
             }
@@ -672,65 +784,90 @@ namespace ClevoFanControl {
             return false;
         }
 
-        private void Form1_FormClosing(object sender, FormClosingEventArgs e) {
-            if (e.CloseReason != CloseReason.WindowsShutDown) {
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (e.CloseReason != CloseReason.WindowsShutDown)
+            {
                 e.Cancel = true;
                 WindowState = FormWindowState.Minimized;
                 ShowInTaskbar = false;
             }
         }
 
-        private void mnuExit_Click(object sender, EventArgs e) {
+        private void mnuExit_Click(object sender, EventArgs e)
+        {
             ExitApp();
         }
 
-        private void mnuShowWindow_Click(object sender, EventArgs e) {
+        private void mnuShowWindow_Click(object sender, EventArgs e)
+        {
             ShowWindow();
         }
 
-        private void icoTray_DoubleClick(object sender, EventArgs e) {
+        private void icoTray_DoubleClick(object sender, EventArgs e)
+        {
             ShowWindow();
         }
 
-        private void cpuBarChanged(object sender, EventArgs e) {
+        private void cpuBarChanged(object sender, EventArgs e)
+        {
             TrackBar t = (TrackBar)sender;
-            if (t.Name == "barCPU40") {
+            if (t.Name == "barCPU40")
+            {
                 cpuFanTable.Fan40 = t.Value;
                 userCpuFanTable.Fan40 = t.Value;
                 lblCPUFan40.Text = t.Value + "%";
-            } else if (t.Name == "barCPU45") {
+            }
+            else if (t.Name == "barCPU45")
+            {
                 cpuFanTable.Fan45 = t.Value;
                 userCpuFanTable.Fan45 = t.Value;
                 lblCPUFan45.Text = t.Value + "%";
-            } else if (t.Name == "barCPU50") {
+            }
+            else if (t.Name == "barCPU50")
+            {
                 cpuFanTable.Fan50 = t.Value;
                 userCpuFanTable.Fan50 = t.Value;
                 lblCPUFan50.Text = t.Value + "%";
-            } else if (t.Name == "barCPU55") {
+            }
+            else if (t.Name == "barCPU55")
+            {
                 cpuFanTable.Fan55 = t.Value;
                 userCpuFanTable.Fan55 = t.Value;
                 lblCPUFan55.Text = t.Value + "%";
-            } else if (t.Name == "barCPU60") {
+            }
+            else if (t.Name == "barCPU60")
+            {
                 cpuFanTable.Fan60 = t.Value;
                 userCpuFanTable.Fan60 = t.Value;
                 lblCPUFan60.Text = t.Value + "%";
-            } else if (t.Name == "barCPU65") {
+            }
+            else if (t.Name == "barCPU65")
+            {
                 cpuFanTable.Fan65 = t.Value;
                 userCpuFanTable.Fan65 = t.Value;
                 lblCPUFan65.Text = t.Value + "%";
-            } else if (t.Name == "barCPU70") {
+            }
+            else if (t.Name == "barCPU70")
+            {
                 cpuFanTable.Fan70 = t.Value;
                 userCpuFanTable.Fan70 = t.Value;
                 lblCPUFan70.Text = t.Value + "%";
-            } else if (t.Name == "barCPU75") {
+            }
+            else if (t.Name == "barCPU75")
+            {
                 cpuFanTable.Fan75 = t.Value;
                 userCpuFanTable.Fan75 = t.Value;
                 lblCPUFan75.Text = t.Value + "%";
-            } else if (t.Name == "barCPU80") {
+            }
+            else if (t.Name == "barCPU80")
+            {
                 cpuFanTable.Fan80 = t.Value;
                 userCpuFanTable.Fan80 = t.Value;
                 lblCPUFan80.Text = t.Value + "%";
-            } else if (t.Name == "barCPU85") {
+            }
+            else if (t.Name == "barCPU85")
+            {
                 cpuFanTable.Fan85 = t.Value;
                 userCpuFanTable.Fan85 = t.Value;
                 lblCPUFan85.Text = t.Value + "%";
@@ -738,45 +875,65 @@ namespace ClevoFanControl {
             SaveFanTableAndConfig();
         }
 
-        private void gpuBarChanged(object sender, EventArgs e) {
+        private void gpuBarChanged(object sender, EventArgs e)
+        {
             TrackBar t = (TrackBar)sender;
-            if (t.Name == "barGPU40") {
+            if (t.Name == "barGPU40")
+            {
                 gpuFanTable.Fan40 = t.Value;
                 userGpuFanTable.Fan40 = t.Value;
                 lblGPUFan40.Text = t.Value + "%";
-            } else if (t.Name == "barGPU45") {
+            }
+            else if (t.Name == "barGPU45")
+            {
                 gpuFanTable.Fan45 = t.Value;
                 userGpuFanTable.Fan45 = t.Value;
                 lblGPUFan45.Text = t.Value + "%";
-            } else if (t.Name == "barGPU50") {
+            }
+            else if (t.Name == "barGPU50")
+            {
                 gpuFanTable.Fan50 = t.Value;
                 userGpuFanTable.Fan50 = t.Value;
                 lblGPUFan50.Text = t.Value + "%";
-            } else if (t.Name == "barGPU55") {
+            }
+            else if (t.Name == "barGPU55")
+            {
                 gpuFanTable.Fan55 = t.Value;
                 userGpuFanTable.Fan55 = t.Value;
                 lblGPUFan55.Text = t.Value + "%";
-            } else if (t.Name == "barGPU60") {
+            }
+            else if (t.Name == "barGPU60")
+            {
                 gpuFanTable.Fan60 = t.Value;
                 userGpuFanTable.Fan60 = t.Value;
                 lblGPUFan60.Text = t.Value + "%";
-            } else if (t.Name == "barGPU65") {
+            }
+            else if (t.Name == "barGPU65")
+            {
                 gpuFanTable.Fan65 = t.Value;
                 userGpuFanTable.Fan65 = t.Value;
                 lblGPUFan65.Text = t.Value + "%";
-            } else if (t.Name == "barGPU70") {
+            }
+            else if (t.Name == "barGPU70")
+            {
                 gpuFanTable.Fan70 = t.Value;
                 userGpuFanTable.Fan70 = t.Value;
                 lblGPUFan70.Text = t.Value + "%";
-            } else if (t.Name == "barGPU75") {
+            }
+            else if (t.Name == "barGPU75")
+            {
                 gpuFanTable.Fan75 = t.Value;
                 userGpuFanTable.Fan75 = t.Value;
                 lblGPUFan75.Text = t.Value + "%";
-            } else if (t.Name == "barGPU80") {
+            }
+            else if (t.Name == "barGPU80")
+            {
                 gpuFanTable.Fan80 = t.Value;
                 userGpuFanTable.Fan80 = t.Value;
                 lblGPUFan80.Text = t.Value + "%";
-            } else if (t.Name == "barGPU85") {
+            }
+            else if (t.Name == "barGPU85")
+            {
                 gpuFanTable.Fan85 = t.Value;
                 userGpuFanTable.Fan85 = t.Value;
                 lblGPUFan85.Text = t.Value + "%";
@@ -784,68 +941,107 @@ namespace ClevoFanControl {
             SaveFanTableAndConfig();
         }
 
-        private void btnProfileManual_CheckedChanged(object sender, EventArgs e) {
-            if (btnProfileManual.Checked) {
+        private void btnProfileManual_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnProfileManual.Checked)
+            {
                 cpuFanTable = userCpuFanTable;
                 gpuFanTable = userGpuFanTable;
-                tabFanCurves.Enabled = true;
+                //tabFanCurves.Enabled = true;
                 mnuProfileManual.Checked = true;
                 mnuProfileDefault.Checked = false;
                 mnuProfileMax.Checked = false;
             }
         }
 
-        private void btnProfileDefault_CheckedChanged(object sender, EventArgs e) {
-            if (btnProfileDefault.Checked) {
+        private void btnProfileDefault_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnProfileDefault.Checked)
+            {
                 cpuFanTable = defaultCpuFanTable;
                 gpuFanTable = defaultGpuFanTable;
-                tabFanCurves.Enabled = false;
+                //tabFanCurves.Enabled = false;
                 mnuProfileManual.Checked = false;
                 mnuProfileDefault.Checked = true;
                 mnuProfileMax.Checked = false;
             }
         }
 
-        private void btnProfileMax_CheckedChanged(object sender, EventArgs e) {
-            if (btnProfileMax.Checked) {
+        private void btnProfileMax_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnProfileMax.Checked)
+            {
                 cpuFanTable = maxFanTable;
                 gpuFanTable = maxFanTable;
-                tabFanCurves.Enabled = false;
+                //tabFanCurves.Enabled = false;
                 mnuProfileManual.Checked = false;
                 mnuProfileDefault.Checked = false;
                 mnuProfileMax.Checked = true;
             }
         }
 
-        private void mnuProfileManual_Click(object sender, EventArgs e) {
+        private void mnuProfileManual_Click(object sender, EventArgs e)
+        {
             btnProfileManual.Checked = true;
         }
 
-        private void mnuProfileDefault_Click(object sender, EventArgs e) {
+        private void mnuProfileDefault_Click(object sender, EventArgs e)
+        {
             btnProfileDefault.Checked = true;
         }
 
-        private void mnuProfileMax_Click(object sender, EventArgs e) {
+        private void mnuProfileMax_Click(object sender, EventArgs e)
+        {
             btnProfileMax.Checked = true;
         }
 
-        private void frmMain_LocationChanged(object sender, EventArgs e) {
-            if (WindowState != FormWindowState.Minimized) {
+        private void frmMain_LocationChanged(object sender, EventArgs e)
+        {
+            if (WindowState != FormWindowState.Minimized)
+            {
                 lastWLeft = Left;
                 lastWTop = Top;
                 SaveFanTableAndConfig();
             }
         }
-        private void btnExit_Click(object sender, EventArgs e) {
+        private void btnExit_Click(object sender, EventArgs e)
+        {
             ExitApp();
         }
 
-        private void btnAlwaysOnTop_CheckedChanged(object sender, EventArgs e) {
+        private void btnAlwaysOnTop_CheckedChanged(object sender, EventArgs e)
+        {
             TopMost = btnAlwaysOnTop.Checked;
+        }
+
+        private void lblCPUMaxTemp_Click(object sender, EventArgs e)
+        {
+            maxCpuTemp = currentCpuTemp;
+        }
+
+        private void lblGPUMaxTemp_Click(object sender, EventArgs e)
+        {
+            maxGpuTemp = currentGpuTemp;
+        }
+
+        private void tmrHighCpuDelay_Tick(object sender, EventArgs e)
+        {
+            highCpuDelayFinished = true;
+        }
+
+        private void txtCpuSafetyTemp_ValueChanged(object sender, EventArgs e)
+        {
+            cpuSafetyTemp = Convert.ToInt32(txtCpuSafetyTemp.Value);
+        }
+
+        private void txtGpuSafetyTemp_ValueChanged(object sender, EventArgs e)
+        {
+            gpuSafetyTemp = Convert.ToInt32(txtGpuSafetyTemp.Value);
         }
     }
 
-    struct FanTable {
+    struct FanTable
+    {
         public int Fan40;
         public int Fan45;
         public int Fan50;
